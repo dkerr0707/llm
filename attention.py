@@ -13,50 +13,41 @@ inputs = torch.tensor(
 d_in = inputs.shape[1]
 d_out = 2
 
-class SelfAttention(nn.Module):
-    def __init__(self, d_in, d_out, qkv_bias=False):
+class CausalAttention(nn.Module):
+    def __init__(self, d_in, d_out, context_length, dropout, qkv_bias=False):
         super().__init__()
         self.W_query = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_key = nn.Linear(d_in, d_out, bias=qkv_bias)
         self.W_value = nn.Linear(d_in, d_out, bias=qkv_bias)
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer(
+            'mask',
+            torch.triu(torch.ones(context_length, context_length), diagonal=1)
+        )
 
     def forward(self, x):
+        b, num_tokens, d_in = x.shape
         queries = self.W_query(x)
         keys = self.W_key(x)
         values = self.W_value(x)
-        attn_scores = queries @ keys.T
+
+        attn_scores = queries @ keys.transpose(1, 2)
+        attn_scores.masked_fill_(
+            self.mask.bool()[:num_tokens, :num_tokens], -torch.inf)
         d_k = keys.shape[-1]
         attn_weights = torch.softmax(attn_scores / d_k ** 0.5, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
         context_vector = attn_weights @ values
         return context_vector
 
-torch.manual_seed(789)
-attention = SelfAttention(d_in, d_out)
-print(attention.forward(inputs))
-
-queries = attention.W_query(inputs)
-keys = attention.W_key(inputs)
-attn_scores = queries @ keys.T
-attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
-print(attn_weights)
-
-context_length = attn_scores.shape[0]
-mask_simple = torch.tril(torch.ones(context_length, context_length))
-print(mask_simple)
-
-masked_simple = attn_weights * mask_simple
-print(masked_simple)
-
-print("----------")
-mask = torch.triu(torch.ones(context_length, context_length), diagonal=1)
-masked = attn_scores.masked_fill(mask.bool(), -torch.inf)
-print(mask)
-print(masked)
-
-attn_weights = torch.softmax(masked / keys.shape[-1]**0.5, dim=1)
-print(attn_weights)
+print(inputs.shape)
+batch = torch.stack((inputs, inputs), dim=0)
+print(batch.shape)
 
 torch.manual_seed(123)
-dropout = torch.nn.Dropout(0.5)
-print(dropout(attn_weights))
+context_length = batch.shape[1]
+attention = CausalAttention(d_in, d_out, context_length, 0.0)
+context_vecs = attention(batch)
+print("context_vec.shape:", context_vecs.shape)
 
