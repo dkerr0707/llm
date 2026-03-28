@@ -34,3 +34,24 @@ torch.manual_seed(789)
 attention = SelfAttention(d_in, d_out)
 print(attention.forward(inputs))
 
+queries = attention.W_query(inputs)
+keys = attention.W_key(inputs)
+attn_scores = queries @ keys.T
+attn_weights = torch.softmax(attn_scores / keys.shape[-1]**0.5, dim=-1)
+print(attn_weights)
+
+context_length = attn_scores.shape[0]
+mask_simple = torch.tril(torch.ones(context_length, context_length))
+print(mask_simple)
+
+masked_simple = attn_weights * mask_simple
+print(masked_simple)
+
+print("----------")
+mask = torch.triu(torch.ones(context_length, context_length), diagonal=1)
+masked = attn_scores.masked_fill(mask.bool(), -torch.inf)
+print(mask)
+print(masked)
+
+attn_weights = torch.softmax(masked / keys.shape[-1]**0.5, dim=1)
+print(attn_weights)
